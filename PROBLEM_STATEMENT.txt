@@ -1,0 +1,5 @@
+Cybersecurity, Privacy & Digital Forensics
+CS-01: Deleted-File & Metadata Recovery Trainer for Digital Forensics
+Trainee forensic investigators need practice recovering deleted/hidden files, but can't use real crime case
+data. Build a practice tool with a fake "corrupted" file system where trainees try to recover deleted files and
+rebuild a timeline of what happened — and the tool scores how much they recovered correctly.
