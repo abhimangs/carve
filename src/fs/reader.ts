@@ -10,14 +10,14 @@ export const BITMAP_BLK = 1
 export const ITABLE_BLK = 2
 export const DATA_BLK = ITABLE_BLK + (NINODES * INODE_SIZE) / BS // 18
 export const ROOT = 1
-export const MAX_PTRS = 30
+export const MAX_PTRS = 22
 export const MAGIC = 'CARVEFS1'
 
 // Inode layout (128 B, little-endian):
 //  0 mode u8 (0 free, 1 file, 2 dir)   1 flags u8 (1 alloc, 2 deleted, 4 hidden)
 //  2 parent u16   4 size u32   8 mtime  12 atime  16 ctime  20 btime   ($SI-style, u32 unix)
 // 24 fn_btime  28 fn_mtime  ($FN-style shadow copy; timestomping tools don't touch it)
-// 32 nblocks u16  34 nameLen u8  36..67 name   68..127 block pointers u16 x30
+// 32 nblocks u16  34 nameLen u8  36..83 name   84..127 block pointers u16 x22
 export const F_ALLOC = 1, F_DEL = 2, F_HIDDEN = 4
 
 export type Inode = {
@@ -70,8 +70,8 @@ export class Disk {
       btime: u32(b, o + 20),
       fnBtime: u32(b, o + 24),
       fnMtime: u32(b, o + 28),
-      blocks: Array.from({ length: Math.min(nb, MAX_PTRS) }, (_, i) => u16(b, o + 68 + i * 2)),
-      name: td.decode(b.subarray(o + 36, o + 36 + Math.min(b[o + 34], 32))),
+      blocks: Array.from({ length: Math.min(nb, MAX_PTRS) }, (_, i) => u16(b, o + 84 + i * 2)),
+      name: td.decode(b.subarray(o + 36, o + 36 + Math.min(b[o + 34], 48))),
     }
   }
 

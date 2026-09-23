@@ -14,7 +14,7 @@ export type Op =
   /** Anti-forensics: rewrite $SI times. The $FN shadow keeps the truth. */
   | { op: 'stomp'; path: string; t: string; set: { m?: string; a?: string; b?: string } }
 
-const OFF = { mode: 0, flags: 1, parent: 2, size: 4, m: 8, a: 12, c: 16, b: 20, fnB: 24, fnM: 28, nb: 32, nameLen: 34, name: 36, ptr: 68 }
+const OFF = { mode: 0, flags: 1, parent: 2, size: 4, m: 8, a: 12, c: 16, b: 20, fnB: 24, fnM: 28, nb: 32, nameLen: 34, name: 36, ptr: 84 }
 
 export function buildImage(label: string, ops: Op[]) {
   const img = new Uint8Array(NBLOCKS * BS)
@@ -71,7 +71,7 @@ export function buildImage(label: string, ops: Op[]) {
   const newInode = (mode: 1 | 2, name: string, parent: number, t: number, hidden: boolean) => {
     const ino = nextIno++
     if (ino >= NINODES) throw new Error('CarveFS: out of inodes')
-    const n = te.encode(name).slice(0, 32)
+    const n = te.encode(name).slice(0, 48)
     img[at(ino, 'mode')] = mode
     img[at(ino, 'flags')] = F_ALLOC | (hidden ? F_HIDDEN : 0)
     w16(img, at(ino, 'parent'), parent)
