@@ -10,6 +10,7 @@ import { ROOT } from '../fs/reader'
 import { type Candidate, type Tag, candidates, describe } from '../evidence'
 import { C, type Ctx, RECOVERED, type Target } from '../term/commands'
 import type { Submission } from '../score'
+import Crash from './Crash'
 import Terminal from './Terminal'
 
 type Chat = { q: string; a: string }[]
@@ -157,6 +158,7 @@ export default function Workspace({ loaded, onExit, onSubmit }: { loaded: Loaded
             ))}
           </nav>
           <div className="min-h-0 overflow-auto">
+            <Crash>
             {tab === 'brief' && <Brief loaded={loaded} />}
             {tab === 'evidence' && <Board tags={tags} setTags={setTags} />}
             {tab === 'mentor' && (
@@ -181,6 +183,7 @@ export default function Workspace({ loaded, onExit, onSubmit }: { loaded: Loaded
                 }}
               />
             )}
+            </Crash>
           </div>
         </aside>
       </div>
@@ -504,8 +507,12 @@ function Mentor({ loaded, shown, chat, context, onHint, onAsk }: { loaded: Loade
   const [q, setQ] = useState('')
   const [pending, setPending] = useState<string | null>(null)
   const [hintsOpen, setHintsOpen] = useState(shown > 0)
-  const end = useRef<HTMLDivElement>(null)
-  useEffect(() => end.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }), [chat.length, pending])
+  // Scroll only the chat box (scrollIntoView can also scroll the page's outer containers).
+  const box = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = box.current
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+  }, [chat.length, pending])
 
   const ask = async (text: string) => {
     const question = text.trim()
@@ -547,7 +554,7 @@ function Mentor({ loaded, shown, chat, context, onHint, onAsk }: { loaded: Loade
         )}
       </div>
 
-      <div className="min-h-0 flex-1 space-y-4 overflow-auto px-4 py-4">
+      <div ref={box} className="min-h-0 flex-1 space-y-4 overflow-auto px-4 py-4">
         {chat.length === 0 && !pending && (
           <div className="rounded-md border border-line bg-bg p-4 text-[13px] leading-relaxed text-mute">
             <p className="font-medium text-ink">Your AI investigation mentor</p>
@@ -558,7 +565,6 @@ function Mentor({ loaded, shown, chat, context, onHint, onAsk }: { loaded: Loade
           <Turn key={i} q={m.q} a={m.a} />
         ))}
         {pending && <Turn q={pending} a={null} />}
-        <div ref={end} />
       </div>
 
       <div className="border-t border-line p-3">
@@ -622,7 +628,8 @@ function Turn({ q, a }: { q: string; a: string | null }) {
 }
 
 /** Tiny markdown: paragraphs, bullet/numbered lists, ``` blocks, `code` and **bold**. */
-export function Md({ s, inline }: { s: string; inline?: boolean }) {
+export function Md({ s: raw, inline }: { s: unknown; inline?: boolean }) {
+  const s = typeof raw === 'string' ? raw : String(raw ?? '')
   const span = (t: string, k: number | string) =>
     t.split(/(`[^`]+`|\*\*[^*]+\*\*)/).map((p, i) =>
       p.startsWith('`') ? (
