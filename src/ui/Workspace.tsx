@@ -550,7 +550,7 @@ export function Md({ s }: { s: string }) {
 }
 
 export async function askMentor(body: { caseId: string; mode: 'hint' | 'debrief'; question?: string; found?: string[]; summary?: string }) {
-  const r = await fetch('/api/mentor', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(20000) })
+  const r = await fetch('/api/mentor', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(35000) })
   if (!r.ok) throw new Error(String(r.status))
   return ((await r.json()) as { answer: string }).answer
 }
