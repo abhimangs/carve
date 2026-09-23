@@ -222,7 +222,7 @@ export async function run(ctx: Ctx, line: string): Promise<string> {
       }
       case 'icat': {
         const n = inoArg(args[0])
-        if (n.mode === 'dir') return 'icat: that inode is a directory'
+        if (n.mode === 'dir') return C.amber(`icat: inode ${n.ino} is a folder, not a file. Run fls -r -d / and use a number from the file list.`)
         const name = args[1] ?? `${n.ino}_${n.name || 'orphan'}`
         const bytes = disk.read(n.ino)
         ctx.recovered.set(name, { bytes, source: `icat inode ${n.ino} (${disk.path(n.ino)})`, ino: n.ino })

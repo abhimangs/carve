@@ -461,10 +461,10 @@ function Brief({ loaded }: { loaded: Loaded }) {
       </div>
       <div className="rounded border border-line bg-bg p-3 font-mono text-xs text-mute">
         <div className="mb-1 font-sans text-[11px] font-semibold uppercase tracking-wider text-faint">Workflow</div>
-        <div><span className="text-amber">fls -r -d /</span> find deleted entries</div>
-        <div><span className="text-amber">istat 17</span> read the inode's timestamps</div>
-        <div><span className="text-amber">icat 17</span> recover to /recovered</div>
-        <div><span className="text-amber">tag /recovered/…</span> add to the timeline</div>
+        <div><span className="text-amber">fls -r -d /</span> list deleted files and their inode numbers</div>
+        <div><span className="text-amber">icat &lt;number&gt;</span> recover one, e.g. icat 4</div>
+        <div><span className="text-amber">cat /recovered/…</span> read what you recovered</div>
+        <div><span className="text-amber">tag /recovered/…</span> add it to the evidence timeline</div>
       </div>
     </div>
   )
