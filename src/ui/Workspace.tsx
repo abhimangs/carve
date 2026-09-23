@@ -84,7 +84,8 @@ export default function Workspace({ loaded, onExit, onSubmit }: { loaded: Loaded
 
   const banner = [
     `\x1b[33m${c.title.toUpperCase()}\x1b[0m  \x1b[90m· volume ${disk.label} · CarveFS · ${disk.bytes.length / 1024} KiB\x1b[0m`,
-    `\x1b[90mType \x1b[33mhelp\x1b[90m for commands. Start with \x1b[33mls -la /\x1b[90m, then look for what was deleted.\x1b[0m`,
+    `\x1b[90mType \x1b[33mhelp\x1b[90m for commands. Start with \x1b[33mfls -r -d /\x1b[90m to list deleted files.\x1b[0m`,
+    `\x1b[90mCopy: select + Ctrl+Shift+C (or right-click). Paste: Ctrl+V. Pasting several lines runs them in order.\x1b[0m`,
     '',
   ].join('\n')
 

@@ -55,10 +55,54 @@ export default function Terminal({ ctx, banner, onRan, inject }: { ctx: Ctx; ban
       },
     }
 
+    // Copy/paste like a desktop terminal. Ctrl+Shift+C would otherwise open the browser's inspector.
+    const copy = () => {
+      const sel = term.getSelection()
+      if (sel) navigator.clipboard?.writeText(sel).catch(() => {})
+      term.clearSelection()
+    }
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type !== 'keydown' || !(e.ctrlKey || e.metaKey)) return true
+      const k = e.key.toLowerCase()
+      if (k === 'c' && (e.shiftKey || term.hasSelection())) {
+        e.preventDefault()
+        copy()
+        return false
+      }
+      // Let the browser fire its native paste event; xterm turns it into onData.
+      if (k === 'v') return false
+      return true
+    })
+    const onContext = (e: MouseEvent) => {
+      if (!term.hasSelection()) return
+      e.preventDefault()
+      copy()
+    }
+    el.current!.addEventListener('contextmenu', onContext)
+
+    // Pasting several lines runs them one after another.
+    const queue: string[] = []
+    let rest = ''
+    const pump = async () => {
+      while (queue.length) {
+        const line = queue.shift()!
+        term.write(line + '\n')
+        await exec(line)
+      }
+      if (rest) (buf = rest), term.write(rest), (rest = '')
+    }
+
     term.write(banner + '\n' + prompt(ctx.cwd))
     const sub = term.onData((d) => {
       if (busy) return
-      if (d === '\r') {
+      if (d.length > 1 && /[\r\n]/.test(d)) {
+        const lines = (buf + d.replace(/[^\x20-\x7e\r\n]/g, '')).split(/\r\n|\r|\n/)
+        rest = lines.pop() ?? ''
+        buf = ''
+        term.write(`\r\x1b[2K${prompt(ctx.cwd)}`)
+        queue.push(...lines)
+        pump()
+      } else if (d === '\r') {
         term.write('\n')
         exec(buf)
       } else if (d === '\x7f') {
@@ -78,7 +122,7 @@ export default function Terminal({ ctx, banner, onRan, inject }: { ctx: Ctx; ban
       } else if (d === '\x0c') {
         term.clear()
       } else if (!d.startsWith('\x1b')) {
-        const clean = d.replace(/[\r\n]+/g, ' ').replace(/[^\x20-\x7e]/g, '')
+        const clean = d.replace(/[^\x20-\x7e]/g, '')
         buf += clean
         term.write(clean)
       }
@@ -87,6 +131,7 @@ export default function Terminal({ ctx, banner, onRan, inject }: { ctx: Ctx; ban
     return () => {
       sub.dispose()
       ro.disconnect()
+      el.current?.removeEventListener('contextmenu', onContext)
       term.dispose()
     }
     // ctx identity is stable for a case session
