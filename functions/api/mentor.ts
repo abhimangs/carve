@@ -1,4 +1,4 @@
-// AI mentor on NVIDIA NIM. Sees the answer key plus the trainee's live session (commands, output,
+// AI mentor via OpenRouter (z-ai/glm-5.3-flash). Sees the answer key plus the trainee's live session (commands, output,
 // recovered files, evidence board) and the chat so far, and guides a beginner step by step.
 import { CASES } from '../../src/cases'
 import { type Env, json, limited } from '../env'
@@ -40,9 +40,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
   const session = [
     `Current directory: ${clip(ctx.cwd, 200) || '/'}`,
-    `Recent terminal commands and output (oldest first):\n${(ctx.commands ?? []).slice(-20).map((x) => `$ ${clip(x.cmd, 200)}\n${clip(x.out, 700)}`).join('\n') || '(none yet)'}`,
-    `Files recovered so far: ${(ctx.recovered ?? []).slice(0, 40).map((x) => clip(x, 160)).join('; ') || 'none'}`,
-    `Evidence board: ${(ctx.tagged ?? []).slice(0, 40).map((x) => clip(x, 160)).join('; ') || 'empty'}`,
+    `Recent terminal commands and output (oldest first):\n${(ctx.commands ?? []).slice(-12).map((x) => `$ ${clip(x.cmd, 160)}\n${clip(x.out, 500)}`).join('\n') || '(none yet)'}`,
+    `Files recovered so far: ${(ctx.recovered ?? []).slice(0, 25).map((x) => clip(x, 160)).join('; ') || 'none'}`,
+    `Evidence board: ${(ctx.tagged ?? []).slice(0, 25).map((x) => clip(x, 160)).join('; ') || 'empty'}`,
   ].join('\n\n')
 
   const system = [
@@ -68,37 +68,54 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   ].join('\n\n')
 
   const history = (body.history ?? [])
-    .slice(-16)
+    .slice(-8)
     .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content)
-    .map((m) => ({ role: m.role, content: clip(m.content, 1500) }))
+    .map((m) => ({ role: m.role, content: clip(m.content, 800) }))
   const messages = debrief
     ? [{ role: 'system', content: system }, { role: 'user', content: `My results:\n${clip(body.summary, 2000)}` }]
-    : [{ role: 'system', content: system }, ...history, { role: 'user', content: clip(body.question, 600) }]
+    : [{ role: 'system', content: system }, ...history, { role: 'user', content: clip(body.question, 500) }]
 
   const clean = (a?: string) => a?.trim().replace(/\s*[\u2014\u2013]\s*/g, ', ')
 
-  // NVIDIA NIM first (a few quick retries: it returns "overloaded" 503s in bursts), then Workers AI.
-  for (let attempt = 0; env.NIM_API_KEY && attempt < 3; attempt++) {
-    try {
-      const r = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { authorization: `Bearer ${env.NIM_API_KEY}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ model: env.MENTOR_MODEL, chat_template_kwargs: { enable_thinking: false }, messages, max_tokens: 700, temperature: 0.3 }),
-        signal: AbortSignal.timeout(12000),
-      })
-      if (r.ok) {
-        const d = (await r.json()) as { choices?: { message?: { content?: string } }[] }
-        const answer = clean(d.choices?.[0]?.message?.content)
-        if (answer) return json({ answer, via: 'nim' })
+  // Cost guard: a daily USD budget tracked in KV from OpenRouter's reported per-call cost.
+  // Over budget, the mentor keeps working on Workers AI instead of spending more.
+  const day = `spend:${new Date().toISOString().slice(0, 10)}`
+  const spent = Number(await env.LEADERBOARD.get(day)) || 0
+  const budget = Number(env.MENTOR_DAILY_USD) || 1
+
+  if (env.OPENROUTER_API && spent < budget) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: { authorization: `Bearer ${env.OPENROUTER_API}`, 'content-type': 'application/json', 'x-title': 'Carve' },
+          body: JSON.stringify({
+            model: env.MENTOR_MODEL,
+            messages,
+            // Reasoning can't be disabled on this model; "minimal" keeps billed reasoning tokens at ~0.
+            reasoning: { effort: 'minimal', exclude: true },
+            usage: { include: true },
+            max_tokens: debrief ? 600 : 450,
+            temperature: 0.3,
+          }),
+          signal: AbortSignal.timeout(15000),
+        })
+        if (r.ok) {
+          const d = (await r.json()) as { choices?: { message?: { content?: string } }[]; usage?: { cost?: number } }
+          // ponytail: read-modify-write on one KV key, so concurrent calls can undercount a little. Set a hard credit limit on the OpenRouter key too.
+          if (d.usage?.cost) await env.LEADERBOARD.put(day, String(spent + d.usage.cost), { expirationTtl: 3 * 86400 })
+          const answer = clean(d.choices?.[0]?.message?.content)
+          if (answer) return json({ answer, via: 'openrouter', cost: d.usage?.cost })
+        }
+        if (r.status < 500 && r.status !== 429) break
+      } catch {
+        break // timeout: fall back rather than make the trainee wait longer
       }
-      if (r.status < 500 && r.status !== 429) break
-    } catch {
-      break // timeout: don't burn more time on NIM
+      await new Promise((res) => setTimeout(res, 600))
     }
-    await new Promise((res) => setTimeout(res, 400 * 3 ** attempt))
   }
   try {
-    const out = (await env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast' as keyof AiModels, { messages, max_tokens: 700, temperature: 0.3 } as never)) as { response?: string }
+    const out = (await env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast' as keyof AiModels, { messages, max_tokens: 600, temperature: 0.3 } as never)) as { response?: string }
     const answer = clean(out.response)
     return answer ? json({ answer, via: 'workers-ai' }) : json({ error: 'empty answer' }, 502)
   } catch {

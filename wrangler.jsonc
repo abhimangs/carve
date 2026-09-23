@@ -4,5 +4,5 @@
   "compatibility_date": "2026-06-01",
   "ai": { "binding": "AI", "remote": true },
   "kv_namespaces": [{ "binding": "LEADERBOARD", "id": "66667302e4b44fe1b612fa0224bc055d" }],
-  "vars": { "MENTOR_MODEL": "nvidia/nemotron-3-super-120b-a12b" }
+  "vars": { "MENTOR_MODEL": "z-ai/glm-5.3-flash", "MENTOR_DAILY_USD": "1" }
 }

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - After every change, commit and push right away (`git add -A && git commit -m "..." && git push`). Don't wait to be asked, and don't batch unrelated changes.
 - Never add Claude as a co-author. No `Co-Authored-By: Claude` trailer, no session links and no "Generated with Claude Code" lines in commits or PRs.
-- `.env` (Supabase and NVIDIA keys) and `.dev.vars` are gitignored. Keep it that way.
+- `.env` (API keys) and `.dev.vars` are gitignored. Keep it that way.
 
 ## Commands
 
@@ -18,7 +18,7 @@ bun run lint                    # oxlint
 bun test                        # self-checks in src/selfcheck.test.ts
 bun test -t "fraud"             # single test by name
 npx tsc -p functions/tsconfig.json   # typecheck Pages Functions (workers types)
-wrangler pages dev --port 8788       # full app + functions; needs NIM_API_KEY in .dev.vars
+wrangler pages dev --port 8788       # full app + functions; needs OPENROUTER_API in .dev.vars
 wrangler pages deploy --branch main --commit-dirty=true   # production: https://carve-a3h.pages.dev
 ```
 
@@ -46,7 +46,7 @@ Carve is a forensics trainer (hackathon brief CS-01 in `PROBLEM_STATEMENT.txt`).
 **UI** (`src/ui`): `App` switches between the Home, Workspace and Results views. `Workspace` owns a mutable `Ctx` (cwd, `/recovered` overlay map, callbacks) that is shared with the xterm `Terminal`. GUI actions call `exec(cmd)`, which injects a real command into the terminal, so the GUI always teaches the CLI equivalent. Progress persists in `localStorage` under `carve:<caseId>`.
 
 **Backend** (`functions/`, Cloudflare Pages Functions, `wrangler.jsonc`):
-- `api/mentor.ts` proxies to the NVIDIA NIM API. It uses the `MENTOR_MODEL` var (currently `nvidia/nemotron-3-super-120b-a12b`) and **must** send `chat_template_kwargs: { enable_thinking: false }`, otherwise reasoning text leaks into the answer. NIM often returns "overloaded" 503s, so it retries 3 times, then falls back to Workers AI (`AI` binding, `@cf/meta/llama-3.3-70b-instruct-fp8-fast`). The client sends the live session (last 20 commands with output, recovered files, evidence board) and the chat history; the prompt holds the answer key. The `NIM_API_KEY` secret is set via `wrangler pages secret put`.
+- `api/mentor.ts` calls OpenRouter with `MENTOR_MODEL` (`z-ai/glm-5.3-flash`, secret `OPENROUTER_API`). Reasoning can't be disabled on that model, so it sends `reasoning: { effort: 'minimal', exclude: true }` (about 0 reasoning tokens) and caps `max_tokens`. A daily USD budget (`MENTOR_DAILY_USD`, default 1) is tracked in KV (`spend:<date>`) from OpenRouter's reported `usage.cost`. Over budget, or if OpenRouter fails, it falls back to Workers AI (`AI` binding, `@cf/meta/llama-3.3-70b-instruct-fp8-fast`). The client sends the live session (last commands with output, recovered files, evidence board) and the chat history; the prompt holds the answer key. A mentor question costs about $0.0002.
 - `api/leaderboard.ts` stores the top 20 per case in the KV binding `LEADERBOARD` and re-scores submissions server-side with `loadCase` + `score`.
 - Both functions import from `src/`, so `src/fs` must stay Workers-compatible (no `TextDecoder('latin1')`; use the `latin1` helper in `bytes.ts`).
 - Local wrangler supports `compatibility_date` only up to 2026-06-02.

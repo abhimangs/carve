@@ -1,4 +1,4 @@
-export type Env = { NIM_API_KEY: string; MENTOR_MODEL: string; LEADERBOARD: KVNamespace; AI: Ai }
+export type Env = { OPENROUTER_API: string; MENTOR_MODEL: string; MENTOR_DAILY_USD?: string; LEADERBOARD: KVNamespace; AI: Ai }
 
 export const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'cache-control': 'no-store' } })
 
