@@ -19,7 +19,7 @@ export type Target = { path: string; bytes: Uint8Array; ino?: number; source: st
 export type Ctx = {
   disk: Disk
   cwd: string
-  recovered: Map<string, { bytes: Uint8Array; source: string }>
+  recovered: Map<string, { bytes: Uint8Array; source: string; ino?: number }>
   onFlsDeleted: () => void
   onTag: (t: Target, sha: string) => string
   onOpen: (t: Target) => void
@@ -45,7 +45,7 @@ export function target(ctx: Ctx, arg: string | undefined): Target | string {
   const p = absPath(ctx.cwd, arg)
   if (p.startsWith(RECOVERED + '/')) {
     const r = ctx.recovered.get(p.slice(RECOVERED.length + 1))
-    return r ? { path: p, bytes: r.bytes, source: r.source } : `${arg}: No such file`
+    return r ? { path: p, bytes: r.bytes, source: r.source, ino: r.ino } : `${arg}: No such file`
   }
   const ino = ctx.disk.resolve(p)
   if (!ino) return `${arg}: No such file or directory${/^\d+$/.test(arg) ? ' (for inode numbers use icat/istat)' : ''}`
@@ -225,7 +225,7 @@ export async function run(ctx: Ctx, line: string): Promise<string> {
         if (n.mode === 'dir') return 'icat: that inode is a directory'
         const name = args[1] ?? `${n.ino}_${n.name || 'orphan'}`
         const bytes = disk.read(n.ino)
-        ctx.recovered.set(name, { bytes, source: `icat inode ${n.ino} (${disk.path(n.ino)})` })
+        ctx.recovered.set(name, { bytes, source: `icat inode ${n.ino} (${disk.path(n.ino)})`, ino: n.ino })
         ctx.onRecovered()
         const ow = disk.overwritten(n.ino)
         return [

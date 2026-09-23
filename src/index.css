@@ -1,1 +1,34 @@
 @import "tailwindcss";
+@import "@xterm/xterm/css/xterm.css";
+
+@theme {
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+  --color-bg: #0b0d10;
+  --color-panel: #12151a;
+  --color-raised: #181c22;
+  --color-line: #252b33;
+  --color-ink: #d6dae0;
+  --color-mute: #8a93a0;
+  --color-faint: #5b6470;
+  --color-amber: #f0a73a;
+  --color-ok: #4cc38a;
+  --color-bad: #e5534b;
+  --color-info: #6cb6ff;
+}
+
+html, body, #root { height: 100%; }
+body { background: var(--color-bg); color: var(--color-ink); font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+::selection { background: #f0a73a55; }
+* { scrollbar-width: thin; scrollbar-color: #2c333c transparent; }
+.xterm { padding: 10px 12px; height: 100%; }
+.xterm-viewport { background: transparent !important; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: .5; }
+:focus-visible { outline: 2px solid var(--color-amber); outline-offset: 2px; }
+
+button:not(:disabled):active { transform: translateY(1px); }
+@media (prefers-reduced-motion: no-preference) {
+  .rise { animation: rise .5s cubic-bezier(.16,1,.3,1) both; animation-delay: calc(var(--i, 0) * 70ms); }
+  @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+}
