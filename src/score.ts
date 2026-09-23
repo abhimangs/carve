@@ -3,10 +3,11 @@ import type { Key } from './cases'
 export type Submission = {
   tagged: string[] // sha256 of every item the trainee tagged as evidence
   timeline: { sha: string; t: number | null }[] // trainee's order, with the time they chose (unix s)
-  hints: number
+  hints: number // static hints revealed
+  questions?: number // AI mentor questions asked
 }
 
-export const W = { recovery: 40, order: 25, time: 25, precision: 10, hint: 5, decoy: 3, tolerance: 60 }
+export const W = { recovery: 40, order: 25, time: 25, precision: 10, hint: 5, question: 2, decoy: 3, tolerance: 60 }
 
 export function score(key: Key, s: Submission) {
   const n = key.evidence.length
@@ -48,7 +49,7 @@ export function score(key: Key, s: Submission) {
   const order = pairs ? (W.order * good) / pairs : 0
   const time = (W.time * per.filter((p) => p.timeOk && p.found).length) / n
   const precision = Math.max(0, (W.precision * found) / n - W.decoy * decoys.length)
-  const hintPenalty = W.hint * s.hints
+  const hintPenalty = W.hint * s.hints + W.question * (s.questions ?? 0)
   const total = Math.max(0, Math.round(recovery + order + time + precision - hintPenalty))
 
   return {

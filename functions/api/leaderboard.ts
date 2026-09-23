@@ -24,12 +24,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     Array.isArray(s.tagged) && s.tagged.length <= 60 && s.tagged.every(hex64) &&
     Array.isArray(s.timeline) && s.timeline.length <= 60 && s.timeline.every((x) => hex64(x?.sha) && (x.t === null || Number.isFinite(x.t))) &&
     Number.isInteger(s.hints) && s.hints >= 0 && s.hints <= 50 &&
+    (s.questions === undefined || (Number.isInteger(s.questions) && s.questions >= 0 && s.questions <= 500)) &&
     Number.isFinite(b?.timeMs) && b!.timeMs! > 0
   if (!valid) return json({ error: 'invalid submission' }, 400)
   if (await limited(env, request, 'lb', 5)) return json({ error: 'slow down' }, 429)
 
   const { key } = await loadCase(c)
-  const row: Row = { name, score: score(key, { tagged: s.tagged, timeline: s.timeline.map((x) => ({ sha: x.sha, t: x.t })), hints: s.hints }).total, timeMs: Math.round(b!.timeMs!), at: Date.now() }
+  const row: Row = { name, score: score(key, { tagged: s.tagged, timeline: s.timeline.map((x) => ({ sha: x.sha, t: x.t })), hints: s.hints, questions: s.questions }).total, timeMs: Math.round(b!.timeMs!), at: Date.now() }
   // ponytail: read-modify-write on one KV key; two posts in the same second can drop one. Use a Durable Object if it ever matters.
   const rows = [...((await env.LEADERBOARD.get<Row[]>(`lb:${c.id}`, 'json')) ?? []), row].sort((x, y) => y.score - x.score || x.timeMs - y.timeMs).slice(0, TOP)
   await env.LEADERBOARD.put(`lb:${c.id}`, JSON.stringify(rows))

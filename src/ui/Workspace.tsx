@@ -1,7 +1,7 @@
 import { DndContext, type DragEndEvent, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core'
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { CaretDown, CaretRight, CircleHalf, DotsSixVertical, DownloadSimple, Timer, X } from '@phosphor-icons/react'
+import { ArrowUp, CaretDown, CaretRight, CircleHalf, DotsSixVertical, DownloadSimple, Lightbulb, Timer, X } from '@phosphor-icons/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Loaded } from '../cases'
 import { fmtTime, td } from '../fs/bytes'
@@ -12,7 +12,8 @@ import { C, type Ctx, RECOVERED, type Target } from '../term/commands'
 import type { Submission } from '../score'
 import Terminal from './Terminal'
 
-type Saved = { tags: Tag[]; hints: number; shown: number; started: number; chat: { q: string; a: string }[] }
+type Chat = { q: string; a: string }[]
+type Saved = { tags: Tag[]; hints: number; questions?: number; shown: number; started: number; chat: Chat }
 const load = (id: string): Saved | null => {
   try {
     return JSON.parse(localStorage.getItem(`carve:${id}`) ?? 'null')
@@ -34,7 +35,10 @@ export default function Workspace({ loaded, onExit, onSubmit }: { loaded: Loaded
   const [tags, setTags] = useState<Tag[]>(init?.tags ?? [])
   const [hints, setHints] = useState(init?.hints ?? 0)
   const [shown, setShown] = useState(init?.shown ?? 0)
-  const [chat, setChat] = useState(init?.chat ?? [])
+  const [chat, setChat] = useState<Chat>(init?.chat ?? [])
+  const [questions, setQuestions] = useState(init?.questions ?? 0)
+  // Recent terminal activity, so the mentor can see what the trainee actually did.
+  const log = useRef<{ cmd: string; out: string }[]>([])
   const [started] = useState(init?.started ?? Date.now())
   const [reveal, setReveal] = useState(false)
   const [selected, setSelected] = useState<Target | null>(null)
@@ -44,7 +48,7 @@ export default function Workspace({ loaded, onExit, onSubmit }: { loaded: Loaded
   const tagsRef = useRef(tags)
   tagsRef.current = tags
 
-  useEffect(() => save(c.id, { tags, hints, shown, started, chat }), [c.id, tags, hints, shown, started, chat])
+  useEffect(() => save(c.id, { tags, hints, questions, shown, started, chat }), [c.id, tags, hints, questions, shown, started, chat])
 
   const ctx = useMemo<Ctx>(
     () => ({
@@ -72,7 +76,7 @@ export default function Workspace({ loaded, onExit, onSubmit }: { loaded: Loaded
   const submit = () => {
     const unset = tags.filter((t) => t.t === null).length
     if (!confirm(`Submit your findings?${unset ? `\n${unset} item(s) have no timestamp chosen.` : ''}`)) return
-    onSubmit({ tagged: tags.map((t) => t.sha), timeline: tags.map((t) => ({ sha: t.sha, t: t.t })), hints }, tags, Date.now() - started)
+    onSubmit({ tagged: tags.map((t) => t.sha), timeline: tags.map((t) => ({ sha: t.sha, t: t.t })), hints, questions }, tags, Date.now() - started)
   }
 
   const download = () => {
@@ -105,7 +109,9 @@ export default function Workspace({ loaded, onExit, onSubmit }: { loaded: Loaded
         <Difficulty d={c.difficulty} />
         <div className="ml-auto flex items-center gap-3 text-xs">
           <span className="inline-flex items-center gap-1 font-mono text-mute" title="Time on case"><Timer /> {elapsed}</span>
-          <span className="font-mono text-mute" title="Hint penalty">hints −{hints * 5}</span>
+          <span className={`font-mono ${hints + questions ? 'text-amber' : 'text-mute'}`} title={`${hints} hint(s) × 5 + ${questions} mentor question(s) × 2`}>
+            {hints + questions ? `help used: −${hints * 5 + questions * 2} pts` : 'no help used'}
+          </span>
           <button onClick={download} className="inline-flex items-center gap-1.5 rounded border border-line px-2.5 py-1.5 text-mute hover:text-ink" title="The raw CarveFS disk image. Open it in any hex editor.">
             <DownloadSimple /> {c.label}.img
           </button>
@@ -122,7 +128,16 @@ export default function Workspace({ loaded, onExit, onSubmit }: { loaded: Loaded
 
         <main className="grid min-h-0 min-w-0 grid-rows-[3fr_2fr]">
           <div className="min-h-0 overflow-hidden bg-bg">
-            <Terminal ctx={ctx} banner={banner} onRan={() => setVersion((v) => v + 1)} inject={inject} />
+            <Terminal
+              ctx={ctx}
+              banner={banner}
+              onRan={(cmd, out) => {
+                // eslint-disable-next-line no-control-regex
+                if (cmd.trim()) log.current = [...log.current, { cmd, out: out.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').slice(0, 700) }].slice(-20)
+                setVersion((v) => v + 1)
+              }}
+              inject={inject}
+            />
           </div>
           <Viewer t={selected} disk={disk} exec={exec} />
         </main>
@@ -149,14 +164,20 @@ export default function Workspace({ loaded, onExit, onSubmit }: { loaded: Loaded
                 loaded={loaded}
                 shown={shown}
                 chat={chat}
-                foundIds={found.map((e) => e.id)}
+                context={() => ({
+                  cwd: ctx.cwd,
+                  commands: log.current,
+                  recovered: [...ctx.recovered].map(([n, r]) => `/recovered/${n} (${r.source})`),
+                  tagged: tags.map((t) => `${t.name}: ${t.t ? `time chosen ${fmtTime(t.t)}` : 'no time chosen yet'}`),
+                  found: found.map((e) => e.id),
+                })}
                 onHint={() => {
                   setShown((s) => s + 1)
                   setHints((h) => h + 1)
                 }}
                 onAsk={(q, a) => {
                   setChat((ch) => [...ch, { q, a }])
-                  setHints((h) => h + 1)
+                  setQuestions((n) => n + 1)
                 }}
               />
             )}
@@ -461,7 +482,8 @@ function Brief({ loaded }: { loaded: Loaded }) {
         40 recovery · 25 timeline order · 25 timestamp accuracy (±60 s) · 10 precision. <span className="text-bad">−3</span> per decoy tagged, <span className="text-bad">−5</span> per hint. Not every deleted or hidden file is evidence.
       </div>
       <div className="rounded border border-line bg-bg p-3 font-mono text-xs text-mute">
-        <div className="mb-1 font-sans text-[11px] font-semibold uppercase tracking-wider text-faint">Workflow</div>
+        <div className="mb-1 font-sans text-[11px] font-semibold uppercase tracking-wider text-faint">Basic commands (free)</div>
+        <div className="mb-2 font-sans text-[12px] text-faint">The same 4 moves work in every case. Hints in the Mentor tab are clues about this specific case.</div>
         <div><span className="text-amber">fls -r -d /</span> list deleted files and their inode numbers</div>
         <div><span className="text-amber">icat &lt;number&gt;</span> recover one, e.g. icat 4</div>
         <div><span className="text-amber">cat /recovered/…</span> read what you recovered</div>
@@ -473,84 +495,174 @@ function Brief({ loaded }: { loaded: Loaded }) {
 
 /* ---------------- Mentor ---------------- */
 
-function Mentor({ loaded, shown, chat, foundIds, onHint, onAsk }: { loaded: Loaded; shown: number; chat: { q: string; a: string }[]; foundIds: string[]; onHint: () => void; onAsk: (q: string, a: string) => void }) {
+export type MentorContext = { cwd: string; commands: { cmd: string; out: string }[]; recovered: string[]; tagged: string[]; found: string[] }
+
+const STARTERS = ['What should I do next?', 'Explain what my last command showed', 'Which timestamp should I trust?', 'What is an inode?']
+
+function Mentor({ loaded, shown, chat, context, onHint, onAsk }: { loaded: Loaded; shown: number; chat: Chat; context: () => MentorContext; onHint: () => void; onAsk: (q: string, a: string) => void }) {
   const { c } = loaded
   const [q, setQ] = useState('')
-  const [busy, setBusy] = useState(false)
-  const ask = async () => {
-    if (!q.trim() || busy) return
-    setBusy(true)
-    const a = await askMentor({ caseId: c.id, mode: 'hint', question: q, found: foundIds }).catch(() => null)
-    onAsk(q, a ?? `Mentor offline. Static hint: ${c.hints[Math.min(shown, c.hints.length - 1)]}`)
+  const [pending, setPending] = useState<string | null>(null)
+  const [hintsOpen, setHintsOpen] = useState(shown > 0)
+  const end = useRef<HTMLDivElement>(null)
+  useEffect(() => end.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }), [chat.length, pending])
+
+  const ask = async (text: string) => {
+    const question = text.trim()
+    if (!question || pending) return
     setQ('')
-    setBusy(false)
+    setPending(question)
+    const history = chat.slice(-8).flatMap((m) => [
+      { role: 'user' as const, content: m.q },
+      { role: 'assistant' as const, content: m.a },
+    ])
+    const a = await askMentor({ caseId: c.id, mode: 'hint', question, history, context: context() }).catch(() => null)
+    onAsk(question, a ?? `I couldn't reach the AI just now. Here's a written hint instead: ${c.hints[Math.min(shown, c.hints.length - 1)]}`)
+    setPending(null)
   }
+
   return (
-    <div className="space-y-4 p-4 text-sm">
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-faint">Guided hints</h3>
-          <button onClick={onHint} disabled={shown >= c.hints.length} className="rounded border border-amber/50 px-2 py-1 text-xs text-amber hover:bg-amber/10">
-            Reveal next hint (−5)
-          </button>
-        </div>
-        <ol className="space-y-2">
-          {c.hints.slice(0, shown).map((h, i) => (
-            <li key={i} className="rounded border border-line bg-bg p-2.5 text-[13px] leading-relaxed text-mute">
-              <Md s={h} />
-            </li>
-          ))}
-        </ol>
-        {!shown && <p className="text-xs text-faint">{c.hints.length} hints available, from gentle to specific.</p>}
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="border-b border-line px-4 py-3">
+        <button onClick={() => setHintsOpen((o) => !o)} className="flex w-full items-center gap-2 text-left text-[13px]">
+          <Lightbulb className="text-amber" />
+          <span className="font-medium">Written hints</span>
+          <span className="text-faint">
+            {shown}/{c.hints.length} used, −5 each
+          </span>
+          <span className="ml-auto text-faint">{hintsOpen ? <CaretDown /> : <CaretRight />}</span>
+        </button>
+        {hintsOpen && (
+          <div className="mt-3 space-y-2">
+            {c.hints.slice(0, shown).map((h, i) => (
+              <div key={i} className="rounded-md border border-line bg-bg px-3 py-2 text-[13px] leading-relaxed text-mute">
+                <span className="mr-1.5 font-mono text-[11px] text-amber">{i + 1}.</span>
+                <Md s={h} inline />
+              </div>
+            ))}
+            <button onClick={onHint} disabled={shown >= c.hints.length} className="w-full rounded-md border border-amber/40 py-1.5 text-xs text-amber hover:bg-amber/10">
+              {shown >= c.hints.length ? 'All hints revealed' : `Reveal hint ${shown + 1} (−5 pts)`}
+            </button>
+          </div>
+        )}
       </div>
-      <div className="border-t border-line pt-4">
-        <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-faint">Ask the AI mentor (−5 per question)</h3>
-        <div className="space-y-3">
-          {chat.map((m, i) => (
-            <div key={i} className="space-y-1.5">
-              <p className="text-[13px] text-ink">› {m.q}</p>
-              <p className="rounded border border-line bg-bg p-2.5 text-[13px] leading-relaxed text-mute whitespace-pre-wrap">
-                <Md s={m.a} />
-              </p>
-            </div>
+
+      <div className="min-h-0 flex-1 space-y-4 overflow-auto px-4 py-4">
+        {chat.length === 0 && !pending && (
+          <div className="rounded-md border border-line bg-bg p-4 text-[13px] leading-relaxed text-mute">
+            <p className="font-medium text-ink">Your AI investigation mentor</p>
+            <p className="mt-1.5">It can see the commands you ran and their output, the files you recovered, and your evidence board. Ask anything, even basic questions. Each question costs 2 points.</p>
+          </div>
+        )}
+        {chat.map((m, i) => (
+          <Turn key={i} q={m.q} a={m.a} />
+        ))}
+        {pending && <Turn q={pending} a={null} />}
+        <div ref={end} />
+      </div>
+
+      <div className="border-t border-line p-3">
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {STARTERS.map((s) => (
+            <button key={s} onClick={() => ask(s)} disabled={!!pending} className="rounded-full border border-line px-2.5 py-1 text-[11.5px] text-mute hover:border-amber/60 hover:text-ink">
+              {s}
+            </button>
           ))}
         </div>
         <form
           onSubmit={(e) => {
             e.preventDefault()
-            ask()
+            ask(q)
           }}
-          className="mt-3 flex gap-2"
+          className="flex items-end gap-2 rounded-md border border-line bg-bg p-1.5 focus-within:border-amber/60"
         >
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="e.g. How can I tell if a timestamp was faked?" className="min-w-0 flex-1 rounded border border-line bg-bg px-2.5 py-1.5 text-[13px]" />
-          <button disabled={busy || !q.trim()} className="rounded bg-raised px-3 text-[13px] text-amber">
-            {busy ? '…' : 'Ask'}
+          <textarea
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                ask(q)
+              }
+            }}
+            rows={2}
+            placeholder="Ask the mentor…"
+            aria-label="Ask the mentor"
+            className="min-h-[40px] flex-1 resize-none bg-transparent px-1.5 py-1 text-[13px] placeholder:text-faint focus:outline-none focus-visible:outline-none"
+          />
+          <button disabled={!!pending || !q.trim()} className="grid h-8 w-8 place-items-center rounded bg-amber text-bg" aria-label="Send">
+            <ArrowUp weight="bold" />
           </button>
         </form>
-        <p className="mt-2 text-[11px] text-faint">The mentor coaches you on method. It won't give you answers.</p>
+        <p className="mt-1.5 text-[11px] text-faint">Enter to send, Shift+Enter for a new line. −2 pts per question.</p>
       </div>
     </div>
   )
 }
 
-/** Renders `code` spans only. */
-export function Md({ s }: { s: string }) {
+function Turn({ q, a }: { q: string; a: string | null }) {
   return (
-    <>
-      {s.split(/(`[^`]+`)/).map((p, i) =>
-        p.startsWith('`') ? (
-          <code key={i} className="font-mono text-amber">
-            {p.slice(1, -1)}
-          </code>
+    <div className="space-y-2">
+      <div className="ml-8 rounded-md rounded-br-sm bg-amber/10 px-3 py-2 text-[13px] text-ink">{q}</div>
+      <div className="mr-4">
+        <div className="mb-1 font-mono text-[10.5px] uppercase tracking-wider text-amber">Mentor</div>
+        {a === null ? (
+          <div className="flex items-center gap-2 text-[13px] text-mute">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber" />
+            Reading your session…
+          </div>
         ) : (
-          p
-        ),
-      )}
-    </>
+          <div className="text-[13px] leading-relaxed text-ink/90">
+            <Md s={a} />
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 
-export async function askMentor(body: { caseId: string; mode: 'hint' | 'debrief'; question?: string; found?: string[]; summary?: string }) {
+/** Tiny markdown: paragraphs, bullet/numbered lists, ``` blocks, `code` and **bold**. */
+export function Md({ s, inline }: { s: string; inline?: boolean }) {
+  const span = (t: string, k: number | string) =>
+    t.split(/(`[^`]+`|\*\*[^*]+\*\*)/).map((p, i) =>
+      p.startsWith('`') ? (
+        <code key={`${k}-${i}`} className="rounded bg-raised px-1 py-0.5 font-mono text-[12px] text-amber">
+          {p.slice(1, -1)}
+        </code>
+      ) : p.startsWith('**') ? (
+        <strong key={`${k}-${i}`} className="font-semibold text-ink">
+          {p.slice(2, -2)}
+        </strong>
+      ) : (
+        p
+      ),
+    )
+  if (inline) return <>{span(s, 0)}</>
+  const out: React.ReactNode[] = []
+  let code: string[] | null = null
+  s.trim()
+    .split('\n')
+    .forEach((line, i) => {
+      if (line.startsWith('```')) {
+        if (code) {
+          out.push(
+            <pre key={i} className="my-2 overflow-auto rounded-md border border-line bg-bg p-2.5 font-mono text-[12px] text-amber">
+              {code.join('\n')}
+            </pre>,
+          )
+          code = null
+        } else code = []
+        return
+      }
+      if (code) return void code.push(line)
+      const li = /^\s*(?:[-*]|\d+[.)])\s+(.*)/.exec(line)
+      if (li) out.push(<div key={i} className="relative my-1 pl-4 before:absolute before:left-0 before:text-amber before:content-['›']">{span(li[1], i)}</div>)
+      else if (line.trim()) out.push(<p key={i} className="my-1.5">{span(line, i)}</p>)
+    })
+  return <>{out}</>
+}
+
+export async function askMentor(body: { caseId: string; mode: 'hint' | 'debrief'; question?: string; history?: { role: 'user' | 'assistant'; content: string }[]; context?: MentorContext; summary?: string }) {
   const r = await fetch('/api/mentor', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(35000) })
   if (!r.ok) throw new Error(String(r.status))
   return ((await r.json()) as { answer: string }).answer

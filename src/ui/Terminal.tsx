@@ -6,7 +6,7 @@ import { C, type Ctx, complete, run } from '../term/commands'
 const prompt = (cwd: string) => `\x1b[32mexaminer@carve\x1b[0m:\x1b[34m${cwd}\x1b[0m$ `
 
 /** xterm front-end for the command layer. `ctx` is mutable session state owned by the parent. */
-export default function Terminal({ ctx, banner, onRan, inject }: { ctx: Ctx; banner: string; onRan: () => void; inject?: { cmd: string; n: number } }) {
+export default function Terminal({ ctx, banner, onRan, inject }: { ctx: Ctx; banner: string; onRan: (cmd: string, out: string) => void; inject?: { cmd: string; n: number } }) {
   const el = useRef<HTMLDivElement>(null)
   const api = useRef<{ exec: (cmd: string) => void } | null>(null)
 
@@ -45,7 +45,7 @@ export default function Terminal({ ctx, banner, onRan, inject }: { ctx: Ctx; ban
       busy = false
       buf = ''
       term.write(prompt(ctx.cwd))
-      onRan()
+      onRan(cmd, out)
     }
     api.current = {
       exec: (cmd) => {
