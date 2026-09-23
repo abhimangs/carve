@@ -89,6 +89,11 @@ export default function Workspace({ loaded, onExit, onSubmit }: { loaded: Loaded
   ].join('\n')
 
   return (
+    <>
+    <div className="fixed inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-bg p-8 text-center lg:hidden">
+      <p className="max-w-sm text-mute">The investigation workspace needs a screen at least 1024px wide: a terminal, a file explorer and a hex viewer side by side.</p>
+      <button onClick={onExit} className="rounded-md border border-line px-4 py-2 text-sm">Back to cases</button>
+    </div>
     <div className="grid h-full grid-rows-[48px_1fr] overflow-hidden">
       <header className="flex items-center gap-4 border-b border-line bg-panel px-4">
         <button onClick={onExit} className="font-mono text-sm font-bold tracking-widest text-amber" title="Back to cases">
@@ -109,13 +114,13 @@ export default function Workspace({ loaded, onExit, onSubmit }: { loaded: Loaded
         </div>
       </header>
 
-      <div className="grid min-h-0 grid-cols-[260px_1fr_400px]">
+      <div className="grid min-h-0 grid-cols-[240px_minmax(0,1fr)_380px]">
         <aside className="min-h-0 overflow-auto border-r border-line bg-panel">
           <Explorer ctx={ctx} reveal={reveal} onToggleReveal={() => setReveal((r) => !r)} onSelect={setSelected} exec={exec} selected={selected?.path} />
         </aside>
 
-        <main className="grid min-h-0 grid-rows-[3fr_2fr]">
-          <div className="min-h-0 bg-bg">
+        <main className="grid min-h-0 min-w-0 grid-rows-[3fr_2fr]">
+          <div className="min-h-0 overflow-hidden bg-bg">
             <Terminal ctx={ctx} banner={banner} onRan={() => setVersion((v) => v + 1)} inject={inject} />
           </div>
           <Viewer t={selected} disk={disk} exec={exec} />
@@ -158,6 +163,7 @@ export default function Workspace({ loaded, onExit, onSubmit }: { loaded: Loaded
         </aside>
       </div>
     </div>
+    </>
   )
 }
 
@@ -265,18 +271,17 @@ function Viewer({ t, disk, exec }: { t: Target | null; disk: Loaded['disk']; exe
   const text = /ASCII|script/.test(kind) ? td.decode(t.bytes) : null
   const n = t.ino ? disk.inode(t.ino) : null
   return (
-    <div className="grid min-h-0 grid-rows-[auto_1fr] border-t border-line bg-panel">
-      <div className="flex items-center gap-3 border-b border-line px-3 py-1.5 text-xs">
-        <span className="truncate font-mono text-ink">{t.path}</span>
-        <span className="text-faint">{kind}</span>
-        <span className="text-faint">{t.bytes.length} B</span>
-        <span className="text-faint">{t.source}</span>
-        <div className="ml-auto flex gap-2">
+    <div className="grid min-h-0 min-w-0 grid-rows-[auto_1fr] overflow-hidden border-t border-line bg-panel">
+      <div className="flex min-w-0 items-center gap-3 whitespace-nowrap border-b border-line px-3 py-1.5 text-xs">
+        <span className="min-w-0 truncate font-mono text-ink" title={t.path}>{t.path}</span>
+        <span className="shrink-0 text-faint">{kind.split(',')[0]}, {t.bytes.length} B</span>
+        <span className="min-w-0 truncate text-faint" title={t.source}>{t.source}</span>
+        <div className="ml-auto flex shrink-0 gap-3">
           {t.ino && <button onClick={() => exec(`istat ${t.ino}`)} className="text-amber hover:underline">istat</button>}
-          <button onClick={() => exec(`tag ${t.path}`)} className="text-amber hover:underline">tag as evidence</button>
+          <button onClick={() => exec(`tag ${t.path}`)} className="text-amber hover:underline">Tag</button>
         </div>
       </div>
-      <div className="grid min-h-0 grid-cols-2">
+      <div className="grid min-h-0 grid-cols-[minmax(0,1fr)_auto]">
         <div className="min-h-0 overflow-auto border-r border-line p-3 text-xs">
           {img && <img src={img} alt={t.path} className="mb-3 max-h-40 rounded border border-line" style={{ imageRendering: 'pixelated' }} />}
           {exif && <KV rows={exif} />}
@@ -303,7 +308,7 @@ function KV({ rows }: { rows: [string, string][] }) {
         {rows.map(([k, v]) => (
           <tr key={k}>
             <td className="pr-3 align-top text-amber">{k}</td>
-            <td className="break-all">{v}</td>
+            <td className="break-words">{v}</td>
           </tr>
         ))}
       </tbody>
@@ -354,7 +359,7 @@ function Board({ tags, setTags }: { tags: Tag[]; setTags: React.Dispatch<React.S
     if (!e.over || e.active.id === e.over.id) return
     setTags((ts) => arrayMove(ts, ts.findIndex((t) => t.sha === e.active.id), ts.findIndex((t) => t.sha === e.over!.id)))
   }
-  const update = (sha: string, t: number | null) => setTags((ts) => ts.map((x) => (x.sha === sha ? { ...x, t } : x)))
+  const update = (sha: string, t: number | null, pick?: string) => setTags((ts) => ts.map((x) => (x.sha === sha ? { ...x, t, pick } : x)))
   if (!tags.length)
     return (
       <div className="p-5 text-sm leading-relaxed text-mute">
@@ -373,7 +378,7 @@ function Board({ tags, setTags }: { tags: Tag[]; setTags: React.Dispatch<React.S
         <SortableContext items={tags.map((t) => t.sha)} strategy={verticalListSortingStrategy}>
           <ol className="space-y-2">
             {tags.map((t, i) => (
-              <Card key={t.sha} tag={t} i={i} onTime={(v) => update(t.sha, v)} onRemove={() => setTags((ts) => ts.filter((x) => x.sha !== t.sha))} />
+              <Card key={t.sha} tag={t} i={i} onTime={(v, pick) => update(t.sha, v, pick)} onRemove={() => setTags((ts) => ts.filter((x) => x.sha !== t.sha))} />
             ))}
           </ol>
         </SortableContext>
@@ -382,10 +387,10 @@ function Board({ tags, setTags }: { tags: Tag[]; setTags: React.Dispatch<React.S
   )
 }
 
-function Card({ tag, i, onTime, onRemove }: { tag: Tag; i: number; onTime: (t: number | null) => void; onRemove: () => void }) {
+function Card({ tag, i, onTime, onRemove }: { tag: Tag; i: number; onTime: (t: number | null, pick?: string) => void; onRemove: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: tag.sha })
-  const idx = tag.candidates.findIndex((c: Candidate) => c.t === tag.t)
-  const [custom, setCustom] = useState(tag.t !== null && idx < 0)
+  const idx = tag.candidates.findIndex((c: Candidate) => c.label === tag.pick)
+  const custom = tag.pick === 'custom'
   const iso = tag.t !== null ? new Date(tag.t * 1000).toISOString().slice(0, 19) : ''
   return (
     <li ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={`rounded border bg-raised ${isDragging ? 'z-10 border-amber shadow-lg' : 'border-line'}`}>
@@ -405,8 +410,9 @@ function Card({ tag, i, onTime, onRemove }: { tag: Tag; i: number; onTime: (t: n
             value={custom ? 'custom' : idx >= 0 ? String(idx) : ''}
             onChange={(e) => {
               const v = e.target.value
-              setCustom(v === 'custom')
-              onTime(v === '' || v === 'custom' ? (v === 'custom' ? tag.t : null) : tag.candidates[Number(v)].t)
+              if (v === 'custom') onTime(tag.t, 'custom')
+              else if (v === '') onTime(null)
+              else onTime(tag.candidates[Number(v)].t, tag.candidates[Number(v)].label)
             }}
             className="mt-2 w-full rounded border border-line bg-bg px-2 py-1 font-mono text-[11px]"
             aria-label={`Timestamp for ${tag.name}`}
@@ -424,7 +430,7 @@ function Card({ tag, i, onTime, onRemove }: { tag: Tag; i: number; onTime: (t: n
               type="datetime-local"
               step={1}
               value={iso}
-              onChange={(e) => onTime(e.target.value ? Math.floor(Date.parse(e.target.value + 'Z') / 1000) : null)}
+              onChange={(e) => onTime(e.target.value ? Math.floor(Date.parse(e.target.value + 'Z') / 1000) : null, 'custom')}
               className="mt-1.5 w-full rounded border border-line bg-bg px-2 py-1 font-mono text-[11px] [color-scheme:dark]"
               aria-label="Custom UTC time"
             />

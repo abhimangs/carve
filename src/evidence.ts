@@ -5,7 +5,7 @@ import type { Disk } from './fs/reader'
 import type { Target } from './term/commands'
 
 export type Candidate = { label: string; t: number }
-export type Tag = { sha: string; name: string; source: string; candidates: Candidate[]; t: number | null }
+export type Tag = { sha: string; name: string; source: string; candidates: Candidate[]; t: number | null; pick?: string /* chosen candidate label, or 'custom' */ }
 
 const exifTime = (s: string) => Math.floor(Date.parse(s.replace(/^(\d+):(\d+):(\d+) /, '$1-$2-$3T') + 'Z') / 1000)
 
