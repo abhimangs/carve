@@ -1,6 +1,7 @@
 export const te = new TextEncoder()
-export const td = new TextDecoder('utf-8', { fatal: false })
-export const latin1 = new TextDecoder('latin1')
+export const td = new TextDecoder()
+/** Bytes to string, one char per byte (no TextDecoder encoding support needed). */
+export const latin1 = { decode: (b: Uint8Array) => String.fromCharCode(...b) }
 
 export const u16 = (b: Uint8Array, o: number) => b[o] | (b[o + 1] << 8)
 export const u32 = (b: Uint8Array, o: number) => (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0
