@@ -10,5 +10,7 @@
     "skipLibCheck": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["./**/*.ts", "../src/cases/**/*.ts", "../src/fs/**/*.ts", "../src/score.ts"]
+  "include": ["./**/*.ts", "../src/cases/**/*.ts", "../src/fs/**/*.ts", "../src/score.ts"],
+  // The tests need bun:test and node types, which the Workers runtime does not have, and nothing here imports them.
+  "exclude": ["../src/**/*.test.ts"]
 }

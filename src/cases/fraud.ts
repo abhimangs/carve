@@ -2,6 +2,7 @@ import { b64, concat, ep } from '../fs/bytes'
 import { docx, jpegWithExif, pdf, zip } from '../fs/formats'
 import { photoJpg, receiptJpg } from '../fs/fixtures'
 import type { Case } from './index'
+import { CASE_META } from './meta'
 
 const H = '/home/kvance'
 
@@ -32,20 +33,7 @@ const invoice = (no: string, amount: string, payee: string) => [
 ]
 
 export const fraud: Case = {
-  id: 'fraud',
-  title: 'Backdated',
-  difficulty: 'Hard',
-  label: 'HFA-LT-0388',
-  brief: [
-    'Harbor Supply Co. says it never issued invoice HS-2231 for $48,500. Accounts payable manager Kyle Vance paid it anyway, and the money went to "K. Vance LLC".',
-    'Vance says the invoice was approved routinely in January. He also says that on 2 April 2025 he left the London office at 17:00 and spent the evening at home.',
-    'Internal Audit sent a notice that day. His laptop was imaged the next morning. Test his story: timestamps can lie.',
-  ],
-  objectives: [
-    'Find evidence of forged timestamps, and establish when the invoice was really created.',
-    'Recover proof of where Vance was that evening and where the money went.',
-    'Watch out for timezones: London was on BST (UTC+1).',
-  ],
+  ...CASE_META[2],
   ops: [
     { op: 'mkdir', path: '/home', t: '2024-09-01T08:00:00Z' },
     { op: 'mkdir', path: H, t: '2024-09-01T08:00:00Z' },

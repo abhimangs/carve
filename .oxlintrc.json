@@ -3,6 +3,8 @@
   "plugins": ["react", "typescript", "oxc"],
   "rules": {
     "react/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "warn",
+    "react/purity": "warn",
     "react/only-export-components": ["warn", { "allowConstantExport": true }]
   }
 }

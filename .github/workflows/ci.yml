@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-shallow/bun-setup@v2
+      - run: bun install --frozen-lockfile
+      # Regenerates each case image in memory and fails on any byte difference from the
+      # committed public/cases/*.img. The browser is shipped those binaries, not the case
+      # scripts, so an un-regenerated case edit would ship a stale image that still passes
+      # tests (which read the image through buildImage) and silently breaks the case.
+      - run: bun run check:images
+      # lint + typecheck + typecheck:fn + test + build, the same gate as local `bun run check`.
+      - run: bun run check

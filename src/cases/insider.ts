@@ -2,6 +2,7 @@ import { ep } from '../fs/bytes'
 import { docx, jpegWithExif, pdf, zip } from '../fs/formats'
 import { photoJpg, upload_confirmJpg } from '../fs/fixtures'
 import type { Case } from './index'
+import { CASE_META } from './meta'
 
 const H = '/home/dreyes'
 
@@ -35,19 +36,7 @@ rm ~/.bash_history
 `
 
 export const insider: Case = {
-  id: 'insider',
-  title: 'The Resignation',
-  difficulty: 'Easy',
-  label: 'NWA-WS-0142',
-  brief: [
-    'Daniel Reyes, a senior account manager at Northwind Analytics, resigned on 14 March 2025 and joined competitor Crestline Partners.',
-    'Two weeks later Crestline began approaching Northwind clients using exact renewal dates and floor pricing.',
-    'You have a forensic image of his workstation home directory. HR says he "cleaned up his laptop" before returning it.',
-  ],
-  objectives: [
-    'Recover deleted files that show what was taken, how, and why.',
-    'Build a timeline of his last two days with accurate UTC timestamps.',
-  ],
+  ...CASE_META[0],
   ops: [
     { op: 'mkdir', path: '/home', t: '2024-11-04T08:00:00Z' },
     { op: 'mkdir', path: H, t: '2024-11-04T08:00:00Z' },

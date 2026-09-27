@@ -2,6 +2,7 @@ import { concat, te } from '../fs/bytes'
 import { jpegWithExif, zip } from '../fs/formats'
 import { wallpaperJpg } from '../fs/fixtures'
 import type { Case } from './index'
+import { CASE_META } from './meta'
 
 const IP = '185.220.101.47'
 
@@ -78,19 +79,7 @@ const syslog = [
 ].map((m) => `Jun  2 02:20:00 fin-app-02 systemd[1]: ${m}\n`).join('')
 
 export const ransomware: Case = {
-  id: 'ransomware',
-  title: 'Locked Ledger',
-  difficulty: 'Medium',
-  label: 'FIN-APP-02',
-  brief: [
-    'At 07:30 on 2 June 2025 staff at Harlow & Finch found every CSV in /srv/finance on server fin-app-02 renamed to *.lck, next to a ransom note.',
-    'The attackers say they stole the data before encrypting it. The auth log is missing and the dropper deleted itself.',
-    'Work out how they got in, what they took, and whether the unencrypted payroll data can be recovered.',
-  ],
-  objectives: [
-    'Recover the deleted auth log, the dropper script, the exfiltrated archive and the unencrypted payroll file.',
-    'Rebuild the attack timeline, from initial access to ransom note.',
-  ],
+  ...CASE_META[1],
   ops: [
     { op: 'mkdir', path: '/var', t: '2025-01-15T09:00:00Z' },
     { op: 'mkdir', path: '/var/log', t: '2025-01-15T09:00:00Z' },

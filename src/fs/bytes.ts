@@ -5,11 +5,14 @@ export const latin1 = { decode: (b: Uint8Array) => String.fromCharCode(...b) }
 
 export const u16 = (b: Uint8Array, o: number) => b[o] | (b[o + 1] << 8)
 export const u32 = (b: Uint8Array, o: number) => (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0
+// A short write used to be dropped silently, which corrupts a field rather than failing loudly.
 export function w16(b: Uint8Array, o: number, v: number) {
+  if (o < 0 || o + 2 > b.length) throw new RangeError(`w16 out of bounds: ${o}+2 > ${b.length}`)
   b[o] = v & 0xff
   b[o + 1] = (v >>> 8) & 0xff
 }
 export function w32(b: Uint8Array, o: number, v: number) {
+  if (o < 0 || o + 4 > b.length) throw new RangeError(`w32 out of bounds: ${o}+4 > ${b.length}`)
   for (let i = 0; i < 4; i++) b[o + i] = (v >>> (8 * i)) & 0xff
 }
 
@@ -56,10 +59,13 @@ export async function sha256(b: Uint8Array) {
   return [...h].map((x) => x.toString(16).padStart(2, '0')).join('')
 }
 
-/** '2024-03-14T09:12:00Z' -> unix seconds */
-export const unix = (iso: string) => Math.floor(Date.parse(iso) / 1000)
+/**
+ * '2024-03-14T09:12:00Z' -> unix seconds. A string with no trailing Z is rejected rather than read as local time:
+ * one missing Z in a case file would otherwise shift a truth time by the build machine's timezone offset.
+ */
+export const unix = (iso: string) => (/[zZ]$/.test(iso) ? Math.floor(Date.parse(iso) / 1000) : NaN)
 /** unix seconds -> '2024-03-14 09:12:00 UTC' */
-export const fmtTime = (t: number) => (t ? new Date(t * 1000).toISOString().replace('T', ' ').replace('.000Z', ' UTC') : '-')
+export const fmtTime = (t: number) => (t ? new Date(t * 1000).toISOString().replace('T', ' ').replace(/\.\d+Z$/, ' UTC') : '-')
 
 /** Epoch line as bash writes it into a history file when HISTTIMEFORMAT is set. */
 export const ep = (iso: string) => `#${unix(iso)}`

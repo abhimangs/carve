@@ -12,23 +12,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```sh
 bun install
-bun run dev                     # Vite dev server (frontend only, /api/* not available)
+bun run dev                     # Vite dev server; carveDevApi (vite.config.ts) shims /api/* with the server's score()
 bun run build                   # tsc -b + vite build -> dist/
 bun run lint                    # oxlint
-bun test                        # self-checks in src/selfcheck.test.ts
+bun test                        # = bun run test
 bun test -t "fraud"             # single test by name
-npx tsc -p functions/tsconfig.json   # typecheck Pages Functions (workers types)
-wrangler pages dev --port 8788       # full app + functions; needs OPENROUTER_API in .dev.vars
-wrangler pages deploy --branch main --commit-dirty=true   # production: https://carve-a3h.pages.dev
+bun run gen:images              # rebuild public/cases/*.img from src/cases/*.ts
+bun run check:images            # fail if a committed image differs from the case scripts
+bun run check                   # lint + both typechecks + tests + build; CI adds check:images on top
+bun run typecheck:fn            # tsc -p functions/tsconfig.json --noEmit (workers types)
+wrangler pages dev --port 8788  # only needed for the real AI mentor; needs OPENROUTER_API in .dev.vars
+bun run deploy                  # wrangler pages deploy --branch main --commit-dirty=true -> https://carve-a3h.pages.dev
 ```
 
 `src/**/*.test.ts` is excluded from `tsconfig.app.json` because `bun:test` types aren't installed, so the build ignores tests.
+
+CI (`.github/workflows/ci.yml`) runs install + `check:images` + `check` on every push and PR, cancelling superseded runs on the same ref. Submissions are re-scored server-side in `api/leaderboard`, so the client score is never trusted.
 
 ## Architecture
 
 Carve is a forensics trainer (hackathon brief CS-01 in `PROBLEM_STATEMENT.txt`). The key idea is that **every case is a real byte-level disk image**, not a JSON lookup.
 
-**Data flow:** case script (`src/cases/*.ts`, a list of `Op`s) → `buildImage` (`src/fs/image.ts`) replays the ops into a 256 KiB `Uint8Array` → `Disk` (`src/fs/reader.ts`) parses it back → the terminal commands (`src/term/commands.ts`) and the UI read **only** through `Disk` and the carver. Case data is never read directly at runtime. This integrity rule is what makes deletion, overwrites and carving genuine.
+**Data flow:** two paths that meet at the same bytes. Server and tests: case script (`src/cases/*.ts`, a list of `Op`s) → `buildImage` (`src/fs/image.ts`) replays the ops into a 256 KiB `Uint8Array`; that is what `gen:images` writes to `public/cases/<id>.img`. Browser: `loadImage` (`src/cases/public.ts`) `fetch`es `/cases/<id>.img` → `Disk` (`src/fs/reader.ts`) parses those exact bytes. Either way the terminal commands (`src/term/commands.ts`) and the UI read **only** through `Disk` and the carver. Case data is never read directly at runtime. This integrity rule is what makes deletion, overwrites and carving genuine.
+
+**Case images** (invariant): `public/cases/*.img` is load-bearing, committed, and must never be gitignored. Editing a case in `src/cases/*.ts` REQUIRES rerunning `bun run gen:images`; `bun test` rebuilds the image from the ops, so a stale committed file passes the tests and only `bun run check:images` catches it. That is why the image step is separate from `bun run check` in CI.
 
 **CarveFS** (layout constants and inode format are documented at the top of `reader.ts`):
 - `delete` removes the dir entry, frees bitmap bits and keeps the inode and data.
@@ -37,18 +44,19 @@ Carve is a forensics trainer (hackathon brief CS-01 in `PROBLEM_STATEMENT.txt`).
 - `stomp` rewrites the $SI times but not the $FN shadow. `istat` flags it when `btime < fnBtime`.
 - A write op's `as` alias names a specific inode when a path is later deleted and recreated (for example the old `.bash_history`).
 
-**Answer keys:** `loadCase` (`src/cases/index.ts`) computes each evidence item's SHA-256 by running the same `Disk.read`, `carveUnallocated` or `carveEmbedded` the trainee uses, as chosen by its `Locator` (`{path}` | `{carve}` | `{embedded}`). Trainee tags are matched by hash. When editing a case, keep ops in chronological/allocation order and rerun `bun test`. The tests check that every key is recoverable, that decoys differ from evidence, that a perfect submission scores 100, and case-specific properties such as the overwrite, the timestomp and the embedded zip.
+**Answer keys:** `loadCase` (`src/cases/index.ts`) computes each evidence item's SHA-256 by running the same `Disk.read`, `carveUnallocated` or `carveEmbedded` the trainee uses, as chosen by its `Locator` (`{path}` | `{carve}` | `{embedded}`). Trainee tags are matched by hash. The client never imports this module: `src/cases/public.ts` (`CASE_META`, `loadImage`) is the only browser-safe entry point, and `src/cases/meta.ts` must stay pure data. That invariant is verified by grepping the built bundle for evidence times, decoys and hint strings. When editing a case, keep ops in chronological/allocation order and rerun `bun test`. The tests check that every key is recoverable, that decoys differ from evidence, that a perfect submission scores 100, and case-specific properties such as the overwrite, the timestomp and the embedded zip.
 
 **File formats** (`src/fs/formats.ts`) are hand-built real formats: stored ZIP with CRC32 and DOS local times, JPEG with an EXIF APP1/TIFF IFD block (GPS time is UTC, DateTimeOriginal is local), DOCX (zip + `core.xml`), and PDF. Base JPEG pixels are base64 in `src/fs/fixtures.ts`. Timezone traps in the cases depend on these semantics.
 
-**Scoring** (`src/score.ts`, pure; weights in `W`) is shared by the client and the leaderboard function. The timestamp candidates offered on evidence cards come from `src/evidence.ts`: inode MACB and $FN times, EXIF, docx and zip times, and `#epoch` lines in shell history.
+**Scoring** (`src/score.ts`, pure; weights in `W`) is shared by the client and the leaderboard function. An order pair only counts when both items were recovered and placed, and a time only scores within `W.tolerance` *and* read from a field the case names, so quoting a plausible-but-unnamed field earns nothing. The timestamp candidates offered on evidence cards come from `src/evidence.ts`: inode MACB and $FN times, EXIF, docx and zip times, and `#epoch` lines in shell history.
 
 **UI** (`src/ui`): `App` switches between the Home, Workspace and Results views. `Workspace` owns a mutable `Ctx` (cwd, `/recovered` overlay map, callbacks) that is shared with the xterm `Terminal`. GUI actions call `exec(cmd)`, which injects a real command into the terminal, so the GUI always teaches the CLI equivalent. Progress persists in `localStorage` under `carve:<caseId>`.
 
 **Backend** (`functions/`, Cloudflare Pages Functions, `wrangler.jsonc`):
 - `api/mentor.ts` calls OpenRouter with `MENTOR_MODEL` (`z-ai/glm-5.3-flash`, secret `OPENROUTER_API`). Reasoning can't be disabled on that model, so it sends `reasoning: { effort: 'minimal', exclude: true }` (about 0 reasoning tokens) and caps `max_tokens`. A daily USD budget (`MENTOR_DAILY_USD`, default 1) is tracked in KV (`spend:<date>`) from OpenRouter's reported `usage.cost`. Over budget, or if OpenRouter fails, it falls back to Workers AI (`AI` binding, `@cf/meta/llama-3.3-70b-instruct-fp8-fast`). The client sends the live session (last commands with output, recovered files, evidence board) and the chat history; the prompt holds the answer key. A mentor question costs about $0.0002.
 - `api/leaderboard.ts` stores the top 20 per case in the KV binding `LEADERBOARD` and re-scores submissions server-side with `loadCase` + `score`.
-- Both functions import from `src/`, so `src/fs` must stay Workers-compatible (no `TextDecoder('latin1')`; use the `latin1` helper in `bytes.ts`).
+- `api/hint.ts` serves the written hints, which live only on the server. Reveal is sequential: `index > seen` is a 400, `index === seen` bumps `hints:<caseId>:<ip>:<date>` in KV, and a refetch of an already-paid index is free so a restored session does not pay twice. The leaderboard reads that counter and ignores the `hints` and `questions` in the submission, so the penalty cannot be dodged by under-reporting.
+- All three functions import from `src/`, so `src/fs` must stay Workers-compatible (no `TextDecoder('latin1')`; use the `latin1` helper in `bytes.ts`).
 - Local wrangler supports `compatibility_date` only up to 2026-06-02.
 
 ## UI conventions

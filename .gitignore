@@ -23,7 +23,14 @@ dist-ssr
 *.sln
 *.sw?
 
+# Secrets: keep these ignored, never commit them.
 .env
 .env.*
 .dev.vars
+.dev.vars.*
 .wrangler
+
+# NOTE: public/cases/*.img is deliberately NOT ignored. Those CarveFS images are
+# load-bearing build output: the browser fetches them instead of replaying the case
+# scripts, and CI's check:images fails if they drift from src/cases/*.ts. Never add
+# public/cases/ here.

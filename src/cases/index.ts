@@ -5,6 +5,7 @@ import { BS, Disk } from '../fs/reader'
 import { insider } from './insider'
 import { ransomware } from './ransomware'
 import { fraud } from './fraud'
+import type { CaseMeta } from './meta'
 
 /** Where the trainee must recover an artifact from. Answer keys are computed with the same code the terminal uses. */
 export type Locator =
@@ -22,13 +23,8 @@ export type Evidence = {
   why: string // why it matters
 }
 
-export type Case = {
-  id: string
-  title: string
-  difficulty: 'Easy' | 'Medium' | 'Hard'
-  label: string // volume label
-  brief: string[]
-  objectives: string[]
+/** A full case: client-safe metadata plus the answer key. Server and tests only. */
+export type Case = CaseMeta & {
   ops: Op[]
   evidence: Evidence[]
   decoys: { label: string; find: Locator; why: string }[]
@@ -46,7 +42,13 @@ export type Key = {
 export type Loaded = { c: Case; disk: Disk; key: Key }
 
 function locate(disk: Disk, built: ReturnType<typeof buildImage>, f: Locator) {
-  if ('path' in f) return disk.read(built.inoOf[f.path])
+  // A path that was never written used to resolve to `undefined`, and disk.read(undefined) returned a 0-byte array,
+  // so the typo became the SHA-256 of the empty string: a real-looking, unscoreable answer key entry.
+  if ('path' in f) {
+    const ino = built.inoOf[f.path]
+    if (ino === undefined) throw new Error(`answer key: no inode was ever written at ${f.path}`)
+    return disk.read(ino)
+  }
   if ('carve' in f) {
     const hit = carveUnallocated(disk).find((c) => c.offset === built.startOf[f.carve] * BS)
     if (!hit) throw new Error(`answer key: ${f.carve} is not carvable`)

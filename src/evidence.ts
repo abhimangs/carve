@@ -38,7 +38,9 @@ export function candidates(disk: Disk, t: Target): Candidate[] {
     const m = /^#(\d{9,10})$/.exec(l)
     if (m && lines[i + 1]) out.push({ label: `history: ${lines[i + 1].slice(0, 42)}`, t: Number(m[1]) })
   })
-  return out.filter((c) => Number.isFinite(c.t) && c.t > 0)
+  // Two zip entries with the same name, or a field that repeats, used to render as two identical dropdown rows.
+  const seen = new Set<string>()
+  return out.filter((c) => Number.isFinite(c.t) && c.t > 0 && !seen.has(`${c.label}\u0000${c.t}`) && seen.add(`${c.label}\u0000${c.t}`))
 }
 
 export const describe = (c: Candidate) => `${fmtTime(c.t)} · ${c.label}`

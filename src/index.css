@@ -10,13 +10,14 @@
   --color-line: #252b33;
   --color-ink: #d6dae0;
   --color-mute: #8a93a0;
-  --color-faint: #5b6470;
+  --color-faint: #7c8797;
   --color-amber: #f0a73a;
   --color-ok: #4cc38a;
   --color-bad: #e5534b;
   --color-info: #6cb6ff;
 }
 
+:root { color-scheme: dark; }
 html, body, #root { height: 100%; }
 body { background: var(--color-bg); color: var(--color-ink); font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
 ::selection { background: #f0a73a55; }

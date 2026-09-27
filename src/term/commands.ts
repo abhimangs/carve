@@ -2,7 +2,7 @@
 import { fmtTime, sha256, td } from '../fs/bytes'
 import { carveEmbedded, carveUnallocated } from '../fs/carve'
 import { readDocx, readExif, sniff, unzipList, unzipRead } from '../fs/formats'
-import { BS, DATA_BLK, type Disk, NBLOCKS, ROOT } from '../fs/reader'
+import { BS, DATA_BLK, type Disk, NBLOCKS, NINODES, ROOT } from '../fs/reader'
 
 export const C = {
   dim: (s: string) => `\x1b[90m${s}\x1b[0m`,
@@ -110,6 +110,7 @@ export const HELP: [string, string][] = [
   ['tag <file>', 'add to the evidence board'],
   ['open <file>', 'show in the viewer panel'],
   ['clear', 'clear the screen'],
+  ['whoami', 'print the current user'],
 ]
 
 export async function run(ctx: Ctx, line: string): Promise<string> {
@@ -124,9 +125,9 @@ export async function run(ctx: Ctx, line: string): Promise<string> {
   }
   const inoArg = (a?: string) => {
     const n = Number(a)
-    if (!a || !Number.isInteger(n) || n < 1 || n > 63) throw new Error(`${cmd}: expected an inode number (see fls)`)
+    if (!a || !Number.isInteger(n) || n < 1 || n >= NINODES) throw new Error('expected an inode number (see fls)')
     const node = disk.inode(n)
-    if (node.mode === 'free') throw new Error(`${cmd}: inode ${n} is unused`)
+    if (node.mode === 'free') throw new Error(`inode ${n} is unused`)
     return node
   }
 
@@ -157,7 +158,7 @@ export async function run(ctx: Ctx, line: string): Promise<string> {
           return [...ctx.recovered].map(([n, r]) => (long ? `${String(r.bytes.length).padStart(7)}  ${C.green(n)}  ${C.dim('← ' + r.source)}` : C.green(n))).join('\n')
         }
         const ino = disk.resolve(p)
-        if (!ino) return `ls: ${p}: No such file or directory`
+        if (!ino) return `ls: ${p}: No such file or directory${/^\d+$/.test(args[0] ?? '') ? C.dim(' (for inode numbers use icat/istat)') : ''}`
         if (disk.inode(ino).mode !== 'dir') return p
         const ents = disk.readDir(ino).map((e) => ({ ...e, n: disk.inode(e.ino) }))
         if (p === '/') ents.push({ name: 'recovered', ino: 0, n: { ...disk.inode(ROOT), mode: 'dir' as const, hidden: false } })
@@ -344,7 +345,15 @@ export function complete(ctx: Ctx, line: string) {
   const words = line.split(' ')
   const last = words[words.length - 1]
   let cands: string[]
-  if (words.length === 1) cands = HELP.flatMap(([c]) => c.split(' ')[0].split('/').map((x) => x.trim())).concat('help')
+  // HELP rows are prose like 'cd <dir> / pwd', 'hexdump [-s off] [-n len] <file>' and 'unzip -l <zip> | -p <zip> <entry>',
+  // so every bare lowercase word left after stripping <placeholders>, [optional flags] and | is a command name.
+  // Splitting on the first space only ever yielded 'cd'.
+  if (words.length === 1)
+    cands = [
+      ...new Set(
+        HELP.flatMap(([c]) => c.replace(/<[^>]*>/g, ' ').replace(/\[[^\]]*\]/g, ' ').replace(/\|/g, ' ').split(/\s+/)).filter((x) => /^[a-z][a-z0-9-]*$/.test(x)),
+      ),
+    ].concat('help')
   else {
     const slash = last.lastIndexOf('/')
     const dirPart = slash >= 0 ? last.slice(0, slash + 1) : ''
