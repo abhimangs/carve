@@ -67,6 +67,7 @@ export default function Workspace({ loaded, onExit, onSubmit }: { loaded: Loaded
   const [, setVersion] = useState(0)
   const [inject, setInject] = useState<{ cmd: string; n: number }>()
   const [tab, setTab] = useState<'evidence' | 'mentor' | 'brief'>('brief')
+  const [note, setNote] = useState('')
 
   useEffect(() => save(c.id, { tags, shown, started, chat }), [c.id, tags, shown, started, chat])
 
@@ -98,19 +99,17 @@ export default function Workspace({ loaded, onExit, onSubmit }: { loaded: Loaded
       onTag: (t, sha) => {
         if (tagsRef.current.some((x) => x.sha === sha)) return C.amber('Already on the evidence board (same SHA-256).')
         const cands = candidates(disk, t)
-        // Derived inside the updater, so two tags in the same tick cannot both pass the dedup guard.
-        let added = false
-        setTags((ts) => {
-          if (ts.some((x) => x.sha === sha)) return ts
-          added = true
-          return [...ts, { sha, name: t.path.split('/').pop()!, source: t.source, candidates: cands, t: null }]
-        })
-        if (!added) return C.amber('Already on the evidence board (same SHA-256).')
-        setTab((cur) => (cur === 'evidence' ? cur : 'evidence'))
+        // The ref decides the message and the updater decides the state. An `added` flag read straight after
+        // setTags would always be false, because React runs the updater during render, not at call time, and a
+        // genuinely new tag would be reported as a duplicate.
+        setTags((ts) => (ts.some((x) => x.sha === sha) ? ts : [...ts, { sha, name: t.path.split('/').pop()!, source: t.source, candidates: cands, t: null }]))
+        // The tab is left alone on purpose: yanking the trainee out of a Mentor answer mid-sentence was worse than
+        // making them notice. The terminal line below says it landed, and the live region says it for screen readers.
+        setNote(`Tagged ${t.path}. ${tags.length + 1} item(s) on the evidence board.`)
         return C.green(`Tagged ${t.path}\nsha256 ${sha}\n`) + C.dim('Placed on the evidence timeline. Drag it into order and pick its true timestamp.')
       },
     }),
-    [disk],
+    [disk, tags.length],
   )
   const exec = useCallback((cmd: string) => setInject((p) => ({ cmd, n: (p?.n ?? 0) + 1 })), [])
 
@@ -185,6 +184,9 @@ export default function Workspace({ loaded, onExit, onSubmit }: { loaded: Loaded
       </div>
       {/* `hidden` matters: the overlay only covers the workspace, so without it the terminal, explorer and hex viewer
           stay in the DOM and reachable by Tab and by screen readers on a phone. */}
+      <p className="sr-only" role="status" aria-live="polite">
+        {note}
+      </p>
       <div className="hidden h-full grid-rows-[48px_1fr] overflow-hidden lg:grid">
         <header className="flex items-center gap-4 border-b border-line bg-panel px-4">
           <button onClick={onExit} className="font-mono text-sm font-bold tracking-widest text-amber" title="Back to cases">
@@ -546,9 +548,6 @@ const Board = memo(function Board({ tags, setTags }: { tags: Tag[]; setTags: Rea
           </ol>
         </SortableContext>
       </DndContext>
-      <p className="sr-only" role="status" aria-live="polite">
-        {`${tags.length} evidence items on the board, ordered earliest first.`}
-      </p>
     </div>
   )
 })
