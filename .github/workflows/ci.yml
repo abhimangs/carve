@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-shallow/bun-setup@v2
+      - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       # Regenerates each case image in memory and fails on any byte difference from the
       # committed public/cases/*.img. The browser is shipped those binaries, not the case
